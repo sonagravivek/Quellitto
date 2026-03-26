@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import PurchaseFormModal from "../components/PurchaseFormModal.jsx";
 import EditPurchaseModal from "../components/EditPurchaseModal.jsx";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
@@ -11,6 +11,7 @@ import {
   updatePurchase,
 } from "../services/api.js";
 import { apiErrorMessage, formatCurrency, formatDateTime } from "../utils/format.js";
+import { groupProductsForTable } from "../utils/groupProducts.js";
 
 export default function PurchasePage() {
   const { showToast } = useToast();
@@ -38,12 +39,21 @@ export default function PurchasePage() {
     loadAll();
   }, [loadAll]);
 
+  const productGroups = useMemo(() => groupProductsForTable(products), [products]);
+
   async function handleCreate(body) {
     setSubmitting(true);
     try {
       const res = await createPurchase(body);
       if (res.success) {
-        showToast(`Saved · Total ${formatCurrency(res.data.totalAmount)} · Stock updated`, "success");
+        const n = res.data?.count ?? 1;
+        const q = body.quantityPurchased;
+        showToast(
+          n > 1
+            ? `Har SKU +${q} (${n} SKU) · kul +${q * n} stock · ${formatCurrency(res.data.totalAmount)}`
+            : `Saved · ${formatCurrency(res.data.totalAmount)} · stock +${q}`,
+          "success"
+        );
         setModalOpen(false);
         await loadAll();
       }
@@ -72,7 +82,7 @@ export default function PurchasePage() {
 
   async function handleDeletePurchase(row) {
     const ok = window.confirm(
-      `Delete this purchase?\n${row.productName} · Qty ${row.quantity} · ${formatCurrency(row.totalAmount)}\n\nStock में से यह quantity घट जाएगी।`
+      `Delete this purchase?\n${row.productName} · ${row.quantityLabel ?? row.quantity} · ${formatCurrency(row.totalAmount)}\n\nStock में से यह quantity घट जाएगी।`
     );
     if (!ok) return;
     try {
@@ -111,7 +121,6 @@ export default function PurchasePage() {
               <tr>
                 <th className="px-4 py-3 sm:px-6">Date</th>
                 <th className="px-4 py-3 sm:px-6">Product</th>
-                <th className="px-4 py-3 sm:px-6">SKU</th>
                 <th className="px-4 py-3 text-right sm:px-6">Qty</th>
                 <th className="px-4 py-3 text-right sm:px-6">Unit price</th>
                 <th className="px-4 py-3 text-right sm:px-6">Total</th>
@@ -121,7 +130,7 @@ export default function PurchasePage() {
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                     अभी कोई purchase नहीं — Add Purchase से entry बनाएँ।
                   </td>
                 </tr>
@@ -130,10 +139,9 @@ export default function PurchasePage() {
                   <tr key={row.id} className="hover:bg-slate-50/80">
                     <td className="whitespace-nowrap px-4 py-3 sm:px-6">{formatDateTime(row.date)}</td>
                     <td className="px-4 py-3 sm:px-6">{row.productName}</td>
-                    <td className="whitespace-nowrap px-4 py-3 font-mono text-xs sm:px-6 sm:text-sm">
-                      {row.skuCode}
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums sm:px-6">
+                      {row.quantityLabel ?? row.quantity}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums sm:px-6">{row.quantity}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-right sm:px-6">
                       {formatCurrency(row.unitPrice)}
                     </td>
@@ -142,13 +150,15 @@ export default function PurchasePage() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right sm:px-6">
                       <div className="flex flex-wrap justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setEditingRow(row)}
-                          className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-800 hover:bg-slate-200"
-                        >
-                          Edit
-                        </button>
+                        {!row.isBatch ? (
+                          <button
+                            type="button"
+                            onClick={() => setEditingRow(row)}
+                            className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-800 hover:bg-slate-200"
+                          >
+                            Edit
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => handleDeletePurchase(row)}
@@ -171,7 +181,7 @@ export default function PurchasePage() {
         onClose={() => setModalOpen(false)}
         onSubmit={handleCreate}
         submitting={submitting}
-        products={products}
+        productGroups={productGroups}
       />
 
       <EditPurchaseModal

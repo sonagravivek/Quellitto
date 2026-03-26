@@ -33,9 +33,6 @@ export default function Navbar() {
           <NavLink to="/today-order" className={linkClass}>
             Today order
           </NavLink>
-          <NavLink to="/sku-bank-statement" className={linkClass}>
-            SKU bank stmt
-          </NavLink>
         </nav>
       </div>
     </header>

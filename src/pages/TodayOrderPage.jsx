@@ -1,11 +1,67 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
 import { useToast } from "../components/ToastProvider.jsx";
 import { getProducts, getTodayOrders, submitTodayOrders } from "../services/api.js";
 import { apiErrorMessage, formatNumber } from "../utils/format.js";
+import { catalogGroupKeyString, groupProductsForTable } from "../utils/groupProducts.js";
 
 function emptyLine() {
   return { productId: "", quantity: "1" };
+}
+
+function findGroupByKey(productGroups, groupKey) {
+  if (!groupKey) return null;
+  return productGroups.find((g) => catalogGroupKeyString(g) === groupKey) ?? null;
+}
+
+function findGroupContainingProductId(productGroups, productId) {
+  if (!Number.isFinite(productId) || productId < 1) return null;
+  return (
+    productGroups.find((g) => g.skus?.some((s) => Number(s.id) === productId)) ?? null
+  );
+}
+
+/** Same catalog की कई lines → quantities जोड़कर एक बार expand */
+function mergedGroupQuantities(lines, productGroups) {
+  const map = new Map();
+  for (const row of lines) {
+    const pid = Math.floor(Number(row.productId));
+    const q = Math.floor(Number(row.quantity));
+    const g = findGroupContainingProductId(productGroups, pid);
+    if (!g?.skus?.length || !Number.isFinite(q) || q < 1) continue;
+    const key = catalogGroupKeyString(g);
+    map.set(key, (map.get(key) || 0) + q);
+  }
+  return map;
+}
+
+/** लॉग में दिखाने वाली SKU: हर group के लिए user की पहली चुनी हुई id */
+function pickedProductIdByGroupKey(lines, productGroups) {
+  const map = new Map();
+  for (const row of lines) {
+    const pid = Math.floor(Number(row.productId));
+    const g = findGroupContainingProductId(productGroups, pid);
+    if (!g?.skus?.length) continue;
+    const key = catalogGroupKeyString(g);
+    if (!map.has(key)) map.set(key, pid);
+  }
+  return map;
+}
+
+/** साझा पूल: हर catalog line की qty एक बार कुल stock से घटती है; सभी SKU पर वही संख्या रहती है */
+function TodayOrderSubmitSummary({ lines, productGroups }) {
+  const merged = mergedGroupQuantities(lines, productGroups);
+  let totalPoolUnits = 0;
+  for (const [, q] of merged) {
+    totalPoolUnits += q;
+  }
+  if (merged.size === 0) return null;
+  return (
+    <p className="text-sm font-medium text-slate-700">
+      Submit पर <strong>कुल physical stock</strong> से <span className="text-brand-700">{totalPoolUnits}</span> unit घटेंगी;
+      उसी product की सभी SKU लाइनों पर <strong>वही बचा हुआ stock</strong> दिखेगा।
+    </p>
+  );
 }
 
 export default function TodayOrderPage() {
@@ -44,6 +100,8 @@ export default function TodayOrderPage() {
     init();
   }, [init]);
 
+  const productGroups = useMemo(() => groupProductsForTable(products), [products]);
+
   function setLineAt(index, field, value) {
     setLines((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
   }
@@ -58,23 +116,41 @@ export default function TodayOrderPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    const items = lines
-      .map((row) => ({
-        productId: Number(row.productId),
-        quantity: Number(row.quantity),
-      }))
-      .filter((row) => Number.isFinite(row.productId) && row.productId >= 1 && Number.isFinite(row.quantity) && row.quantity >= 1);
+    const merged = mergedGroupQuantities(lines, productGroups);
+    const pickedByKey = pickedProductIdByGroupKey(lines, productGroups);
+    const items = [];
+    for (const [key, q] of merged) {
+      const g = findGroupByKey(productGroups, key);
+      if (!g?.skus?.length) continue;
+      const logProductId = pickedByKey.get(key);
+      if (!logProductId) continue;
+      for (const s of g.skus) {
+        const id = Math.floor(Number(s.id));
+        if (id >= 1) {
+          items.push({ productId: id, quantity: q, logProductId });
+        }
+      }
+    }
 
     if (!items.length) {
-      showToast("कम से कम एक पंक्ति में SKU चुनें और count भरें", "error");
+      showToast("कम से कम एक पंक्ति में SKU चुनें और quantity भरें", "error");
       return;
     }
+
+    let totalPoolDeduct = 0;
+    for (const [, q] of merged) {
+      totalPoolDeduct += q;
+    }
+    const logLineCount = merged.size;
 
     setSubmitting(true);
     try {
       const res = await submitTodayOrders({ items });
       if (res.success) {
-        showToast("Order लग गया — stock घटा दिया गया", "success");
+        showToast(
+          `Order लगा — kul ${totalPoolDeduct} unit कुल stock se ghate; log में ${logLineCount} line`,
+          "success"
+        );
         setLines([emptyLine()]);
         await loadProducts();
         await loadTodayLog();
@@ -96,8 +172,9 @@ export default function TodayOrderPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Today order</h1>
         <p className="mt-1 text-slate-600">
-          हर लाइन: SKU dropdown + आज कितने order आए (count)। Submit पर inventory से उतना{" "}
-          <strong>stock कम</strong> होगा।
+          <strong>साझा कुल stock:</strong> कोई भी SKU चुनो — नीचे की <strong>Quantity</strong> एक बार कुल inventory से घटेगी; उसी product की{" "}
+          <strong>सभी SKU</strong> पर <strong>वही बचा हुआ stock</strong> दिखेगा। उदाहरण: कुल 50, <code>bottle1</code> पर order 10 → कुल 40;{" "}
+          <code>bottle1</code> और <code>bottle2</code> दोनों 40।
         </p>
         {todayDate ? (
           <p className="mt-2 text-sm font-medium text-brand-700">तारीख (server): {todayDate}</p>
@@ -115,7 +192,7 @@ export default function TodayOrderPage() {
             onClick={addLine}
             className="text-sm font-medium text-brand-600 hover:text-brand-700"
           >
-            + SKU line
+            + Line
           </button>
         </div>
 
@@ -125,29 +202,43 @@ export default function TodayOrderPage() {
           </p>
         ) : (
           <ul className="space-y-3">
-            {lines.map((row, index) => (
+            {lines.map((row, index) => {
+              const pid = Math.floor(Number(row.productId));
+              const selectedGroup =
+                Number.isFinite(pid) && pid >= 1
+                  ? findGroupContainingProductId(productGroups, pid)
+                  : null;
+              return (
               <li
                 key={index}
                 className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4 sm:flex-row sm:items-end"
               >
-                <label className="min-w-0 flex-1 text-sm font-medium text-slate-700">
-                  SKU / Product
+                <div className="min-w-0 flex-1 space-y-1">
+                <label className="block text-sm font-medium text-slate-700">
+                  SKU
                   <select
                     required={index === 0}
-                    value={row.productId}
+                    value={row.productId === "" ? "" : String(row.productId)}
                     onChange={(e) => setLineAt(index, "productId", e.target.value)}
                     className={selectClass}
                   >
                     <option value="">— चुनें —</option>
                     {products.map((p) => (
-                      <option key={p.id} value={p.id}>
+                      <option key={p.id} value={String(p.id)}>
                         {p.skuCode} · {p.productName} (stock {formatNumber(p.quantityInStock)})
                       </option>
                     ))}
                   </select>
                 </label>
-                <label className="w-full text-sm font-medium text-slate-700 sm:w-36">
-                  Count (आज के orders)
+                {selectedGroup && selectedGroup.skus.length > 1 ? (
+                  <p className="text-xs text-slate-500">
+                    साझा पूल — SKU: {selectedGroup.skus.map((s) => s.skuCode).join(", ")} — नीचे की qty <strong>कुल</strong> से घटेगी, सभी पर
+                    वही stock
+                  </p>
+                ) : null}
+                </div>
+                <label className="w-full text-sm font-medium text-slate-700 sm:w-44">
+                  Quantity (कुल से घटेगा)
                   <input
                     required={index === 0}
                     min={1}
@@ -169,9 +260,12 @@ export default function TodayOrderPage() {
                   <span className="hidden w-20 sm:block" />
                 )}
               </li>
-            ))}
+            );
+            })}
           </ul>
         )}
+
+        <TodayOrderSubmitSummary lines={lines} productGroups={productGroups} />
 
         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
           <button
@@ -186,6 +280,10 @@ export default function TodayOrderPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-slate-900">आज की logged lines</h2>
+        <p className="text-sm text-slate-600">
+          लॉग में <strong>चुनी हुई SKU</strong> और घटाई गई <strong>कुल quantity</strong> दिखती है। Inventory में वही रकम एक बार साझा पूल से
+          घटती है; सभी SKU लाइनों पर वही बचा stock।
+        </p>
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-left text-sm">

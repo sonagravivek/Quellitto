@@ -79,24 +79,4 @@ export async function submitTodayOrders(body) {
   return data;
 }
 
-export async function getSkuBankStatement(productId) {
-  const { data } = await api.get("/sku-bank-statement", { params: { productId } });
-  return data;
-}
-
-export async function createSkuBankStatementLine(body) {
-  const { data } = await api.post("/sku-bank-statement", body);
-  return data;
-}
-
-export async function updateSkuBankStatementLine(id, body) {
-  const { data } = await api.put(`/sku-bank-statement/${id}`, body);
-  return data;
-}
-
-export async function deleteSkuBankStatementLine(id) {
-  const { data } = await api.delete(`/sku-bank-statement/${id}`);
-  return data;
-}
-
 export { api };
