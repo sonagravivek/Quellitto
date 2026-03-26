@@ -35,7 +35,7 @@ function mergedGroupQuantities(lines, productGroups) {
   return map;
 }
 
-/** लॉग में दिखाने वाली SKU: हर group के लिए user की पहली चुनी हुई id */
+/** लॉग में दिखाने वाली SKU: हर group के लिए user की चुनी id (एक से ज़्यादा लाइन पर आखिरी चयन जीतता है) */
 function pickedProductIdByGroupKey(lines, productGroups) {
   const map = new Map();
   for (const row of lines) {
@@ -43,7 +43,7 @@ function pickedProductIdByGroupKey(lines, productGroups) {
     const g = findGroupContainingProductId(productGroups, pid);
     if (!g?.skus?.length) continue;
     const key = catalogGroupKeyString(g);
-    if (!map.has(key)) map.set(key, pid);
+    map.set(key, pid);
   }
   return map;
 }
