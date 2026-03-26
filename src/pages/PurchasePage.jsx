@@ -13,6 +13,13 @@ import {
 import { apiErrorMessage, formatCurrency, formatDateTime } from "../utils/format.js";
 import { groupProductsForTable } from "../utils/groupProducts.js";
 
+function purchaseLineTotal(row) {
+  const q = Number(row.quantity);
+  const u = Number(row.unitPrice);
+  if (!Number.isFinite(q) || !Number.isFinite(u)) return 0;
+  return Math.round(q * u * 100) / 100;
+}
+
 export default function PurchasePage() {
   const { showToast } = useToast();
   const [products, setProducts] = useState([]);
@@ -41,6 +48,11 @@ export default function PurchasePage() {
 
   const productGroups = useMemo(() => groupProductsForTable(products), [products]);
 
+  const purchaseSubtotal = useMemo(
+    () => rows.reduce((sum, row) => sum + purchaseLineTotal(row), 0),
+    [rows]
+  );
+
   async function handleCreate(body) {
     setSubmitting(true);
     try {
@@ -50,7 +62,7 @@ export default function PurchasePage() {
         const q = body.quantityPurchased;
         showToast(
           n > 1
-            ? `Har SKU +${q} (${n} SKU) · kul +${q * n} stock · ${formatCurrency(res.data.totalAmount)}`
+            ? `Saved · kul stock +${q} (${n} SKU synced) · ${formatCurrency(res.data.totalAmount)}`
             : `Saved · ${formatCurrency(res.data.totalAmount)} · stock +${q}`,
           "success"
         );
@@ -82,7 +94,7 @@ export default function PurchasePage() {
 
   async function handleDeletePurchase(row) {
     const ok = window.confirm(
-      `Delete this purchase?\n${row.productName} · ${row.quantityLabel ?? row.quantity} · ${formatCurrency(row.totalAmount)}\n\nStock में से यह quantity घट जाएगी।`
+      `Delete this purchase?\n${row.productName} · ${row.quantityLabel ?? row.quantity} · ${formatCurrency(purchaseLineTotal(row))}\n\nStock में से यह quantity घट जाएगी।`
     );
     if (!ok) return;
     try {
@@ -123,7 +135,7 @@ export default function PurchasePage() {
                 <th className="px-4 py-3 sm:px-6">Product</th>
                 <th className="px-4 py-3 text-right sm:px-6">Qty</th>
                 <th className="px-4 py-3 text-right sm:px-6">Unit price</th>
-                <th className="px-4 py-3 text-right sm:px-6">Total</th>
+                <th className="px-4 py-3 text-right sm:px-6">Amount</th>
                 <th className="px-4 py-3 text-right sm:px-6">Actions</th>
               </tr>
             </thead>
@@ -145,8 +157,8 @@ export default function PurchasePage() {
                     <td className="whitespace-nowrap px-4 py-3 text-right sm:px-6">
                       {formatCurrency(row.unitPrice)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-medium sm:px-6">
-                      {formatCurrency(row.totalAmount)}
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums sm:px-6">
+                      {formatCurrency(purchaseLineTotal(row))}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right sm:px-6">
                       <div className="flex flex-wrap justify-end gap-1">
@@ -172,6 +184,22 @@ export default function PurchasePage() {
                 ))
               )}
             </tbody>
+            {rows.length > 0 ? (
+              <tfoot className="border-t-2 border-slate-200 bg-slate-50/90">
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-4 py-3 text-right text-sm font-semibold text-slate-800 sm:px-6"
+                  >
+                    Subtotal
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right text-base font-bold tabular-nums text-slate-900 sm:px-6">
+                    {formatCurrency(purchaseSubtotal)}
+                  </td>
+                  <td className="px-4 py-3 sm:px-6" aria-hidden />
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
         </div>
       </div>

@@ -230,12 +230,12 @@ export default function TodayOrderPage() {
                     ))}
                   </select>
                 </label>
-                {selectedGroup && selectedGroup.skus.length > 1 ? (
+                {/* {selectedGroup && selectedGroup.skus.length > 1 ? (
                   <p className="text-xs text-slate-500">
                     साझा पूल — SKU: {selectedGroup.skus.map((s) => s.skuCode).join(", ")} — नीचे की qty <strong>कुल</strong> से घटेगी, सभी पर
                     वही stock
                   </p>
-                ) : null}
+                ) : null} */}
                 </div>
                 <label className="w-full text-sm font-medium text-slate-700 sm:w-44">
                   Quantity (कुल से घटेगा)
@@ -293,7 +293,6 @@ export default function TodayOrderPage() {
                   <th className="px-4 py-3 sm:px-6">SKU</th>
                   <th className="px-4 py-3 sm:px-6">Product</th>
                   <th className="px-4 py-3 text-right sm:px-6">Qty removed</th>
-                  <th className="px-4 py-3 text-right sm:px-6">Current stock</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -312,9 +311,6 @@ export default function TodayOrderPage() {
                       <td className="px-4 py-3 font-mono text-xs sm:px-6 sm:text-sm">{r.skuCode}</td>
                       <td className="px-4 py-3 sm:px-6">{r.productName}</td>
                       <td className="px-4 py-3 text-right tabular-nums sm:px-6">{r.quantity}</td>
-                      <td className="px-4 py-3 text-right tabular-nums sm:px-6">
-                        {formatNumber(r.currentStock)}
-                      </td>
                     </tr>
                   ))
                 )}
