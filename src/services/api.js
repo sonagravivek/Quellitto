@@ -36,6 +36,14 @@ export async function updateProduct(id, body) {
   return data;
 }
 
+/** Stmt: सारी lines हटाकर एक credit; amount null / खाली = कोई stmt नहीं */
+export async function syncProductBankStatementTotal(productId, amount) {
+  const { data } = await api.put(`/products/${productId}/bank-statement-total`, {
+    amount: amount == null || amount === "" ? null : Number(amount),
+  });
+  return data;
+}
+
 export async function deleteProduct(id) {
   const { data } = await api.delete(`/products/${id}`);
   return data;
@@ -58,6 +66,36 @@ export async function updatePurchase(id, body) {
 
 export async function deletePurchase(id) {
   const { data } = await api.delete(`/purchase/${id}`);
+  return data;
+}
+
+export async function getTodayOrders(params = {}) {
+  const { data } = await api.get("/today-orders", { params });
+  return data;
+}
+
+export async function submitTodayOrders(body) {
+  const { data } = await api.post("/today-orders", body);
+  return data;
+}
+
+export async function getSkuBankStatement(productId) {
+  const { data } = await api.get("/sku-bank-statement", { params: { productId } });
+  return data;
+}
+
+export async function createSkuBankStatementLine(body) {
+  const { data } = await api.post("/sku-bank-statement", body);
+  return data;
+}
+
+export async function updateSkuBankStatementLine(id, body) {
+  const { data } = await api.put(`/sku-bank-statement/${id}`, body);
+  return data;
+}
+
+export async function deleteSkuBankStatementLine(id) {
+  const { data } = await api.delete(`/sku-bank-statement/${id}`);
   return data;
 }
 
